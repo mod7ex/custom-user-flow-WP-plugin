@@ -22,8 +22,8 @@
 
     <form action="<?php echo wp_lostpassword_url(); ?>" method="post">
         <p class="form-row">
-            <label for="user_login"><?php _e( 'Email', 'personalize-login' ); ?>
-                <input type="text" name="user_login" id="user_login">
+            <label for="user_login"><?php _e( 'Email', 'personalize-login' ); ?></label>
+            <input type="text" name="user_login" id="user_login">
         </p>
 
         <p class="lostpassword-submit">
