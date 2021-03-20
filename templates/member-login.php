@@ -23,6 +23,18 @@ $domain = 'Custom_User_Flow';
     </p>
     <?php endif; ?>
 
+    <?php if ( $attributes['password_updated'] ) : ?>
+    <p class="login-info">
+        <?php _e( 'Your password has been changed. You can sign in now.', 'personalize-login' ); ?>
+    </p>
+    <?php endif; ?>
+
+    <?php if ( $attributes['lost_password_sent'] ) : ?>
+    <p class="login-info">
+        <?php _e( 'Check your email for a link to reset your password.', 'personalize-login' ); ?>
+    </p>
+    <?php endif; ?>
+
     <?php
         wp_login_form(array(
             'label_username' => __( 'Email', $domain),

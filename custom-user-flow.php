@@ -13,7 +13,6 @@
 
 class Custom_User_Flow_Plugin
 {
- 
     private static $domain = 'Custom_User_Flow';
 
     /**
@@ -33,10 +32,21 @@ class Custom_User_Flow_Plugin
         add_shortcode( 'custom-register-form', array( $this, 'render_register_form' ) );
         add_action( 'login_form_register', array( $this, 'redirect_to_custom_register' ) );
         add_action( 'login_form_register', array( $this, 'do_register_user' ) );
-        
         add_filter( 'admin_init' , array( $this, 'register_settings_fields' ) );
-
         add_action( 'wp_print_footer_scripts', array( $this, 'add_captcha_js_to_footer' ) );
+
+        add_action( 'login_form_lostpassword', array( $this, 'redirect_to_custom_lostpassword' ) );
+        add_shortcode( 'custom-password-lost-form', array( $this, 'render_password_lost_form' ) );
+        add_action( 'login_form_lostpassword', array( $this, 'do_password_lost' ) );
+        add_filter( 'retrieve_password_message', array( $this, 'replace_retrieve_password_message' ), 10, 4 );
+
+        add_action( 'login_form_rp', array( $this, 'redirect_to_custom_password_reset' ) );
+        add_action( 'login_form_resetpass', array( $this, 'redirect_to_custom_password_reset' ) );
+
+        add_shortcode( 'custom-password-reset-form', array( $this, 'render_password_reset_form' ) );
+
+        add_action( 'login_form_rp', array( $this, 'do_password_reset' ) );
+        add_action( 'login_form_resetpass', array( $this, 'do_password_reset' ) );
     }
 
 
@@ -60,9 +70,17 @@ class Custom_User_Flow_Plugin
             ),
 
             'member-register' => array(
-                'title' => __( 'Register', 'personalize-login' ),
+                'title' => __( 'Register', self::$domain),
                 'content' => '[custom-register-form]'
             ),
+            'member-password-lost' => array(
+                'title' => __( 'Pick a New Password', self::$domain),
+                'content' => '[custom-password-lost-form]'
+            ),
+            'member-password-reset' => array(
+                'title' => __( 'Reset Your Password', self::$domain),
+                'content' => '[custom-password-reset-form]'
+            )
         );
     
         foreach ( $page_definitions as $slug => $page ) {
@@ -81,6 +99,8 @@ class Custom_User_Flow_Plugin
                 ));
             }
         }
+
+        flush_rewrite_rules();
     }
 
 
@@ -158,6 +178,13 @@ class Custom_User_Flow_Plugin
 
         $attributes['errors'] = $errors;
         // Render the login form using an external template
+
+        // Check if the user just requested a new password
+        $attributes['lost_password_sent'] = isset( $_REQUEST['checkemail'] ) && $_REQUEST['checkemail'] == 'confirm';
+
+        // Check if user just updated password
+        $attributes['password_updated'] = isset( $_REQUEST['password'] ) && $_REQUEST['password'] == 'changed';
+
         return $this->get_template_html( 'login', $attributes );
     }
 
@@ -266,19 +293,38 @@ class Custom_User_Flow_Plugin
                 );
                 return sprintf( $err, wp_lostpassword_url() );
             
-                // Registration errors
+            // Registration errors
  
             case 'email':
-                return __( 'The email address you entered is not valid.', 'personalize-login' );
+                return __( 'The email address you entered is not valid.', self::$domain);
             
             case 'email_exists':
-                return __( 'An account exists with this email address.', 'personalize-login' );
+                return __( 'An account exists with this email address.', self::$domain);
             
             case 'closed':
-                return __( 'Registering new users is currently not allowed.', 'personalize-login' );
+                return __( 'Registering new users is currently not allowed.', self::$domain);
             
             case 'captcha':
-                return __( 'The Google reCAPTCHA check failed. Are you a robot?', 'personalize-login' );
+                return __( 'The Google reCAPTCHA check failed. Are you a robot?', self::$domain);
+
+            // Lost password
+ 
+            case 'empty_username':
+                return __( 'You need to enter your email address to continue.', self::$domain);
+            
+            case 'invalid_email':
+            case 'invalidcombo':
+                return __( 'There are no users registered with this email address.', self::$domain);
+
+            case 'expiredkey':
+            case 'invalidkey':
+                return __( 'The password reset link you used is not valid anymore.', self::$domain);
+            
+            case 'password_reset_mismatch':
+                return __( "The two passwords you entered don't match.", self::$domain);
+                
+            case 'password_reset_empty':
+                return __( "Sorry, we don't accept empty passwords.", self::$domain);
     
             default:
                 break;
@@ -295,6 +341,7 @@ class Custom_User_Flow_Plugin
     {
         $redirect_url = home_url( 'member-login?logged_out=true' );
         wp_safe_redirect( $redirect_url );
+        remove_query_arg('logged_out');
         exit;
     }
 
@@ -475,7 +522,8 @@ class Custom_User_Flow_Plugin
     /**
     * Registers the settings fields needed by the plugin.
     */
-    public function register_settings_fields() {
+    public function register_settings_fields()
+    {
         // Create settings fields for the two keys used by reCAPTCHA
         register_setting( 'general', 'personalize-login-recaptcha-site-key' );
         register_setting( 'general', 'personalize-login-recaptcha-secret-key' );
@@ -509,7 +557,8 @@ class Custom_User_Flow_Plugin
      * An action function used to include the reCAPTCHA JavaScript file
      * at the end of the page.
      */
-    public function add_captcha_js_to_footer() {
+    public function add_captcha_js_to_footer()
+    {
         echo "<script src='https://www.google.com/recaptcha/api.js'></script>";
     }
 
@@ -520,7 +569,8 @@ class Custom_User_Flow_Plugin
      *
      * @return bool True if the CAPTCHA is OK, otherwise false.
      */
-    private function verify_recaptcha() {
+    private function verify_recaptcha()
+    {
         // This field is set by the recaptcha widget if check is successful
         if ( isset ( $_POST['g-recaptcha-response'] ) ) {
             $captcha_response = $_POST['g-recaptcha-response'];
@@ -547,13 +597,239 @@ class Custom_User_Flow_Plugin
     
         return $success;
     }
+
+
+
+    /**
+     * Redirects the user to the custom "Forgot your password?" page instead of
+     * wp-login.php?action=lostpassword.
+     */
+    public function redirect_to_custom_lostpassword()
+    {
+        if ( 'GET' == $_SERVER['REQUEST_METHOD'] ) {
+            if ( is_user_logged_in() ) {
+                $this->redirect_logged_in_user();
+                exit;
+            }
+    
+            wp_redirect( home_url( 'member-password-lost' ) );
+            exit;
+        }
+    }
+
+
+
+    /**
+     * A shortcode for rendering the form used to initiate the password reset.
+     *
+     * @param  array   $attributes  Shortcode attributes.
+     * @param  string  $content     The text content for shortcode. Not used.
+     *
+     * @return string  The shortcode output
+     */
+    public function render_password_lost_form( $attributes, $content = null ) {
+        // Parse shortcode attributes
+        $default_attributes = array( 'show_title' => false );
+        $attributes = shortcode_atts( $default_attributes, $attributes, 'custom-password-lost-form' );
+    
+        if ( is_user_logged_in() ) {
+            return __( 'You are already signed in.', self::$domain);
+        } else {
+
+            // Retrieve possible errors from request parameters
+            $attributes['errors'] = array();
+            if ( isset( $_REQUEST['errors'] ) ) {
+                $error_codes = explode( ',', $_REQUEST['errors'] );
+            
+                foreach ( $error_codes as $error_code ) {
+                    $attributes['errors'] []= $this->get_error_message( $error_code );
+                }
+            }
+
+            return $this->get_template_html( 'password_lost', $attributes );
+        }
+    }
+
+
+
+    /**
+     * Initiates password reset.
+     * 
+     */
+    public function do_password_lost()
+    {
+        if ( 'POST' == $_SERVER['REQUEST_METHOD'] ) {
+            $errors = retrieve_password();
+            if ( is_wp_error( $errors ) ) {
+                // Errors found
+                $redirect_url = home_url( 'member-password-reset' );
+                $redirect_url = add_query_arg( 'errors', join( ',', $errors->get_error_codes() ), $redirect_url );
+            } else {
+                // Email sent
+                $redirect_url = home_url( 'member-login' );
+                $redirect_url = add_query_arg( 'checkemail', 'confirm', $redirect_url );
+            }
+    
+            wp_redirect( $redirect_url );
+            exit;
+        }
+    }
+
+
+    /**
+     * Returns the message body for the password reset mail.
+     * Called through the retrieve_password_message filter.
+     *
+     * @param string  $message    Default mail message.
+     * @param string  $key        The activation key.
+     * @param string  $user_login The username for the user.
+     * @param WP_User $user_data  WP_User object.
+     *
+     * @return string   The mail message to send.
+     */
+    public function replace_retrieve_password_message( $message, $key, $user_login, $user )
+    {
+        
+        // Create new message
+        $message  = __( 'Hello!', self::$domain) . "\r\n\r\n";
+        $message .= sprintf( __( 'You asked us to reset your password for your account using the email address %s.', self::$domain), $user->user_email ) . "\r\n\r\n";
+        $message .= __( "If this was a mistake, or you didn't ask for a password reset, just ignore this email and nothing will happen.", self::$domain) . "\r\n\r\n";
+        $message .= __( 'To reset your password, visit the following address:', self::$domain) . "\r\n\r\n";
+        $message .= site_url( "wp-login.php?action=rp&key=$key&login=" . rawurlencode( $user_login ), 'login' ) . "\r\n\r\n";
+        $message .= __( 'Thanks!', self::$domain) . "\r\n";
+    
+        return $message;
+    }
+
+
+
+    /**
+     * Redirects to the custom password reset page, or the login page
+     * if there are errors.
+     */
+    public function redirect_to_custom_password_reset()
+    {
+        if ( 'GET' == $_SERVER['REQUEST_METHOD'] ) {
+            // Verify key / login combo
+            $user = check_password_reset_key( $_REQUEST['key'], $_REQUEST['login'] );
+            if ( ! $user || is_wp_error( $user ) ) {
+                if ( $user && $user->get_error_code() === 'expired_key' ) {
+                    wp_redirect( home_url( 'member-login?login=expiredkey' ) );
+                } else {
+                    wp_redirect( home_url( 'member-login?login=invalidkey' ) );
+                }
+                exit;
+            }
+    
+            $redirect_url = home_url( 'member-password-reset' );
+            $redirect_url = add_query_arg( 'login', esc_attr( $_REQUEST['login'] ), $redirect_url );
+            $redirect_url = add_query_arg( 'key', esc_attr( $_REQUEST['key'] ), $redirect_url );
+    
+            wp_redirect( $redirect_url );
+            exit;
+        }
+    }
+
+
+
+    /**
+     * A shortcode for rendering the form used to reset a user's password.
+     *
+     * @param  array   $attributes  Shortcode attributes.
+     * @param  string  $content     The text content for shortcode. Not used.
+     *
+     * @return string  The shortcode output
+     */
+    public function render_password_reset_form( $attributes, $content = null )
+    {
+        // Parse shortcode attributes
+        $default_attributes = array( 'show_title' => false );
+        $attributes = shortcode_atts( $default_attributes, $attributes );
+    
+        if ( is_user_logged_in() ) {
+            return __( 'You are already signed in.', self::$domain);
+        } else {
+            if ( isset( $_REQUEST['login'] ) && isset( $_REQUEST['key'] ) ) {
+                $attributes['login'] = $_REQUEST['login'];
+                $attributes['key'] = $_REQUEST['key'];
+    
+                // Error messages
+                $errors = array();
+                if ( isset( $_REQUEST['error'] ) ) {
+                    $error_codes = explode( ',', $_REQUEST['error'] );
+    
+                    foreach ( $error_codes as $code ) {
+                        $errors []= $this->get_error_message( $code );
+                    }
+                }
+                $attributes['errors'] = $errors;
+    
+                return $this->get_template_html( 'password_reset', $attributes );
+            } else {
+                return __( 'Invalid password reset link.', self::$domain);
+            }
+        }
+    }
+
+
+
+    /**
+     * Resets the user's password if the password reset form was submitted.
+     */
+    public function do_password_reset()
+    {
+        if ( 'POST' == $_SERVER['REQUEST_METHOD'] ) {
+            $rp_key = $_REQUEST['rp_key'];
+            $rp_login = $_REQUEST['rp_login'];
+    
+            $user = check_password_reset_key( $rp_key, $rp_login );
+    
+            if ( ! $user || is_wp_error( $user ) ) {
+                if ( $user && $user->get_error_code() === 'expired_key' ) {
+                    wp_redirect( home_url( 'member-login?login=expiredkey' ) );
+                } else {
+                    wp_redirect( home_url( 'member-login?login=invalidkey' ) );
+                }
+                exit;
+            }
+    
+            if ( isset( $_POST['pass1'] ) ) {
+                if ( $_POST['pass1'] != $_POST['pass2'] ) {
+                    // Passwords don't match
+                    $redirect_url = home_url( 'member-password-reset' );
+    
+                    $redirect_url = add_query_arg( 'key', $rp_key, $redirect_url );
+                    $redirect_url = add_query_arg( 'login', $rp_login, $redirect_url );
+                    $redirect_url = add_query_arg( 'error', 'password_reset_mismatch', $redirect_url );
+    
+                    wp_redirect( $redirect_url );
+                    exit;
+                }
+    
+                if ( empty( $_POST['pass1'] ) ) {
+                    // Password is empty
+                    $redirect_url = home_url( 'member-password-reset' );
+    
+                    $redirect_url = add_query_arg( 'key', $rp_key, $redirect_url );
+                    $redirect_url = add_query_arg( 'login', $rp_login, $redirect_url );
+                    $redirect_url = add_query_arg( 'error', 'password_reset_empty', $redirect_url );
+    
+                    wp_redirect( $redirect_url );
+                    exit;
+                }
+    
+                // Parameter checks OK, reset password
+                reset_password( $user, $_POST['pass1'] );
+                wp_redirect( home_url( 'member-login?password=changed' ) );
+            } else {
+                echo "Invalid request.";
+            }
+    
+            exit;
+        }
+    }
 }
  
-
-
-
-
-
 
 
 
@@ -561,3 +837,33 @@ class Custom_User_Flow_Plugin
 $custom_user_flow = new Custom_User_Flow_Plugin();
 
 register_activation_hook(__FILE__, array('Custom_User_Flow_Plugin', 'plugin_activated'));
+
+
+add_filter( 'wp_nav_menu_objects', function( $items, $args) {
+
+    // if ( 'primary' !== $args->theme_location ) {
+    //     return $items;
+    // }
+
+    return array_filter( $items, function( $item ) {
+        if(home_url('member-password-reset/') == $item->url){
+            return false;
+        }
+        
+        if(home_url('member-password-lost/') == $item->url){
+            return false;
+        }
+
+        $urls = array(
+            home_url('member-login/'),
+            home_url('member-register/'),
+        );
+
+        if(in_array($item->url, $urls)){
+            return !is_user_logged_in();
+        }
+
+        return true;
+    });
+
+}, 10, 2 );

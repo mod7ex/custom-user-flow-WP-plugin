@@ -47,9 +47,9 @@
         </p>
 
         <?php if ( $attributes['recaptcha_site_key'] ) : ?>
-        <div class="recaptcha-container">
-            <div class="g-recaptcha" data-sitekey="<?php echo $attributes['recaptcha_site_key']; ?>"></div>
-        </div>
+        <p class="recaptcha-container">
+        <div class="g-recaptcha" data-sitekey="<?php echo $attributes['recaptcha_site_key']; ?>"></div>
+        </p>
         <?php endif; ?>
 
         <p class="signup-submit">
