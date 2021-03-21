@@ -13,6 +13,35 @@ class Custom_User_Flow_Plugin
 {
     private static $domain = 'Custom_User_Flow';
 
+    // Information needed for creating the plugin's pages
+    private static function get_custom_pages()
+    {
+        return array(
+            'member-login' => array(
+                'title' => __( 'Sign In', 'Custom_User_Flow'),
+                'content' => '[custom-login-form]'
+            ),
+
+            'member-account' => array(
+                'title' => __( 'Your Account', 'Custom_User_Flow'),
+                'content' => '[account-info]'
+            ),
+
+            'member-register' => array(
+                'title' => __( 'Register', 'Custom_User_Flow'),
+                'content' => '[custom-register-form]'
+            ),
+            'member-password-lost' => array(
+                'title' => __( 'Pick a New Password', 'Custom_User_Flow'),
+                'content' => '[custom-password-lost-form]'
+            ),
+            'member-password-reset' => array(
+                'title' => __( 'Reset Your Password', 'Custom_User_Flow'),
+                'content' => '[custom-password-reset-form]'
+            )
+        );
+    }
+
     /**
      * Initializes the plugin.
      *
@@ -53,33 +82,7 @@ class Custom_User_Flow_Plugin
      */
     public static function plugin_activated()
     {
-        // Information needed for creating the plugin's pages
-        $page_definitions = array(
-            'member-login' => array(
-                'title' => __( 'Sign In', self::$domain),
-                'content' => '[custom-login-form]'
-            ),
-
-            'member-account' => array(
-                'title' => __( 'Your Account', self::$domain),
-                'content' => '[account-info]'
-            ),
-
-            'member-register' => array(
-                'title' => __( 'Register', self::$domain),
-                'content' => '[custom-register-form]'
-            ),
-            'member-password-lost' => array(
-                'title' => __( 'Pick a New Password', self::$domain),
-                'content' => '[custom-password-lost-form]'
-            ),
-            'member-password-reset' => array(
-                'title' => __( 'Reset Your Password', self::$domain),
-                'content' => '[custom-password-reset-form]'
-            )
-        );
-    
-        foreach ( $page_definitions as $slug => $page ) {
+        foreach (self::get_custom_pages() as $slug => $page ) {
             // Check that the page doesn't exist already
             $query = new WP_Query( 'pagename=' . $slug );
             if ( ! $query->have_posts() ) {
@@ -819,6 +822,33 @@ class Custom_User_Flow_Plugin
             exit;
         }
     }
+    
+    /**
+    * Deactivation hook to unregister our existing Contacts Role
+    */
+    public function plugin_deactivation() {
+        
+        wp_delete_post();
+        
+        foreach (self::get_custom_pages() as $slug => $page ) {
+
+            // $args = array(
+            //     'post_type'      => 'page',
+            //     'posts_per_page' => 1,
+            //     'post_name'      => $slug,
+            //     'fields'         => 'ids' 
+            // );
+            // $post = get_posts( $args );      # this returns an array so use '$post[0]'
+
+            $post = get_page_by_path($slug);
+
+            if ( !empty($post)) {
+                wp_delete_post($post->ID, true);
+            }
+        }
+
+        flush_rewrite_rules();
+    }
 }
  
 
@@ -826,6 +856,7 @@ class Custom_User_Flow_Plugin
 $custom_user_flow = new Custom_User_Flow_Plugin();
 
 register_activation_hook(__FILE__, array('Custom_User_Flow_Plugin', 'plugin_activated'));
+register_deactivation_hook( __FILE__, array( 'Custom_User_Flow_Plugin', 'plugin_deactivation' ) );
 
 add_filter( 'wp_nav_menu_objects', function( $items, $args) {
 
